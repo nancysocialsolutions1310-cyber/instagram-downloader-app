@@ -6,7 +6,6 @@ import time
 import requests
 from io import BytesIO 
 import json
-import zipstream # Required for streaming ZIP files
 from werkzeug.datastructures import Headers
 
 # --- Flask & Instaloader Setup ---
@@ -40,7 +39,7 @@ else:
     print("Instaloader Warning: No IG_USERNAME or IG_PASSWORD provided. Using anonymous access (HIGH RISK OF RATE LIMIT).")
 
 
-# --- Core Scraping Logic ---
+# --- Core Scraping Logic (ZIP Logic Removed) ---
 def get_media_details(instagram_url):
     """Fetches the direct media URL and filename from an Instagram Post URL."""
     # 1. Extract Post Shortcode 
@@ -55,43 +54,39 @@ def get_media_details(instagram_url):
         # 3. Get the Post object (uses the global, potentially authenticated L object)
         post = instaloader.Post.from_shortcode(L.context, shortcode)
         
-        # Determine media list for proxy service
-        media_list = []
+        # --- LOGIC MODIFIED: Get ONLY the FIRST media item details ---
+        
+        # Default to the post itself
+        target_node = post
+        media_type = "Video (Reel/Post)" if post.is_video else "Image Post"
+
         if post.is_sidecar:
-            for i, node in enumerate(post.sidecar_nodes):
-                is_video = node.is_video
-                file_url = node.video_url if is_video else node.display_url
-                file_ext = ".mp4" if is_video else ".jpg"
-                
-                media_list.append({
-                    "url": file_url,
-                    "filename": f"insta_{shortcode}_part_{i+1}{file_ext}",
-                    "is_video": is_video
-                })
-            download_url = post.url 
-            media_type = f"Carousel ({len(media_list)} items)"
-        else:
-            is_video = post.is_video
-            file_ext = ".mp4" if is_video else ".jpg"
-            download_url = post.video_url if is_video else post.url
-            
-            media_list.append({
-                "url": download_url,
-                "filename": f"insta_{shortcode}{file_ext}",
-                "is_video": is_video
-            })
-            media_type = "Video (Reel/Post)" if is_video else "Image Post"
+            # For carousels, grab the first media item only
+            target_node = post.sidecar_nodes[0]
+            media_type = f"Carousel (Item 1 of {len(post.sidecar_nodes)})"
         
+        is_video = target_node.is_video
+        file_ext = ".mp4" if is_video else ".jpg"
         
-        filename_base = f"instagram_{shortcode}" + (".zip" if post.is_sidecar else media_list[0]['filename'].split('_')[-1])
+        download_url = target_node.video_url if is_video else target_node.display_url
+        thumbnail_url = target_node.display_url
+        
+        # Create a simple list with only the first item (needed for the proxy route format)
+        media_list = [{
+            "url": download_url,
+            "filename": f"insta_{shortcode}{file_ext}",
+            "is_video": is_video
+        }]
+        
+        filename_base = f"instagram_{shortcode}{file_ext}"
         
         return {
             "original_url": download_url,
             "filename": filename_base,
             "type": media_type,
-            "thumbnail_url": post.url,
+            "thumbnail_url": thumbnail_url,
             "is_carousel": post.is_sidecar,
-            "media_list": media_list # List of files to download (for the proxy)
+            "media_list": media_list 
         }, 200
         
     except instaloader.exceptions.InstaloaderException as e: 
@@ -102,7 +97,7 @@ def get_media_details(instagram_url):
         print(f"Unexpected Error: {e}")
         return {"error": f"An unexpected server error occurred: {str(e)}"}, 500
 
-# --- File Streaming Functions (for ZIP) ---
+# --- File Streaming Function (Single File Only) ---
 
 def stream_file_from_url(url):
     """Streams a single file content from an external URL."""
@@ -117,27 +112,6 @@ def stream_file_from_url(url):
     for chunk in response.iter_content(chunk_size=8192):
         yield chunk
 
-def generate_zip_stream(media_list):
-    """Creates a generator that streams a ZIP archive containing multiple files."""
-    z = zipstream.ZipStream(files=True)
-    
-    for media_item in media_list:
-        file_url = media_item['url']
-        file_name = media_item['filename']
-        
-        try:
-            # Get the content generator for the file
-            content_generator = stream_file_from_url(file_url)
-            
-            # Add the file to the zip stream
-            z.write_iter(file_name, content_generator)
-        except requests.exceptions.HTTPError as e:
-            # Log failure but continue zipping other files
-            print(f"Failed to fetch {file_name}: {e}. Skipping.")
-        
-    # Yield all chunks from the zip generator
-    for chunk in z:
-        yield chunk
 
 # --- Flask Routes ---
 
@@ -156,7 +130,7 @@ def download_api():
 
 @app.route('/download_proxy', methods=['GET'])
 def download_proxy():
-    """Route to handle downloading single files or streaming ZIP archives."""
+    """Route to handle downloading single files."""
     media_list_json = request.args.get('media_list')
     filename = request.args.get('filename')
 
@@ -168,31 +142,25 @@ def download_proxy():
     except json.JSONDecodeError:
         return "Invalid media list format.", 400
     
-    # Determine if we are serving a single file or a ZIP
-    if len(media_list) > 1 or filename.endswith('.zip'):
-        # --- ZIP ARCHIVE STREAMING ---
-        if not filename.endswith('.zip'):
-             filename = filename + '.zip'
-             
-        headers = Headers()
-        headers['Content-Type'] = 'application/zip'
-        headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+    # Since we removed ZIP logic, we only stream the first item
+    if not media_list:
+        return "No media found to stream.", 404
 
-        return Response(stream_with_context(generate_zip_stream(media_list)), headers=headers)
-
-    else:
-        # --- SINGLE FILE STREAMING ---
-        item = media_list[0]
-        url = item['url']
+    # --- SINGLE FILE STREAMING ---
+    item = media_list[0]
+    url = item['url']
+    
+    try:
+        mimetype = 'video/mp4' if item['is_video'] else 'image/jpeg'
         
-        try:
-            mimetype = 'video/mp4' if item['is_video'] else 'image/jpeg'
-            return Response(stream_with_context(stream_file_from_url(url)),
-                            headers={'Content-Disposition': f'attachment; filename="{filename}"',
-                                     'Content-Type': mimetype})
-        except requests.exceptions.RequestException as e:
-            print(f"Single file proxy download failed: {e}")
-            return "Failed to retrieve single file from source.", 503
+        # Use stream_with_context to send file efficiently
+        return Response(stream_with_context(stream_file_from_url(url)),
+                        headers={'Content-Disposition': f'attachment; filename="{filename}"',
+                                 'Content-Type': mimetype})
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Single file proxy download failed: {e}")
+        return "Failed to retrieve single file from source.", 503
 
 
 @app.route('/', methods=['GET'])
