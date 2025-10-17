@@ -12,38 +12,9 @@ from werkzeug.datastructures import Headers
 app = Flask(__name__)
 L = instaloader.Instaloader()
 
-# --- INSTALOADER AUTHENTICATION FIX ---
-# Load credentials securely from environment variables (Render console)
-IG_USERNAME = os.environ.get('IG_USERNAME')
-IG_PASSWORD = os.environ.get('IG_PASSWORD')
+# --- Instaloader runs in ANONYMOUS mode (Highest compatibility) ---
 
-# CRITICAL FIX: Define the expected session file path (in the same directory as app.py)
-SESSION_FILE_PATH = f"{IG_USERNAME}.session"
-
-# Attempt to log in or load session on startup
-if IG_USERNAME and IG_PASSWORD:
-    # --- SIMPLIFIED LOGIN SEQUENCE ---
-    try:
-        # 1. First, try loading the session file directly (This is the stable check)
-        L.load_session_from_file(IG_USERNAME, filename=SESSION_FILE_PATH)
-        print(f"Instaloader: Session loaded successfully from project root for {IG_USERNAME}.")
-    except Exception as load_error:
-        # 2. If loading fails (due to missing file, expired token, or any error), attempt a fresh login
-        print(f"Instaloader: Session load failed ({load_error}). Attempting fresh login...")
-        try:
-            L.login(IG_USERNAME, IG_PASSWORD)
-            
-            # Save the session to the PROJECT ROOT (where Render expects it)
-            L.save_session_to_file(IG_USERNAME, filename=SESSION_FILE_PATH)
-            print(f"Instaloader: Login successful and session saved to {SESSION_FILE_PATH}.")
-        except Exception as login_error:
-            # This will catch the Checkpoint error and fall back to anonymous access
-            print(f"Instaloader Warning: Fresh login failed. Error: {login_error}. Falling back to anonymous access.")
-else:
-    print("Instaloader Warning: No IG_USERNAME or IG_PASSWORD provided. Using anonymous access (HIGH RISK OF RATE LIMIT).")
-
-
-# --- Core Scraping Logic (Corrected) ---
+# --- Core Scraping Logic (Corrected for Anonymous Access) ---
 def get_media_details(instagram_url, preferred_type='Reels'): 
     """Fetches the direct media URL and filename from an Instagram Post URL."""
     # 1. Extract Post Shortcode 
@@ -55,12 +26,12 @@ def get_media_details(instagram_url, preferred_type='Reels'):
     time.sleep(1.5) 
 
     try:
-        # 3. Get the Post object
+        # 3. Get the Post object (runs anonymously)
         post = instaloader.Post.from_shortcode(L.context, shortcode)
         
         target_node = post
         media_type = "Video (Reel/Post)" if post.is_video else "Image Post"
-        is_carousel = False # Assume false initially
+        is_carousel = False 
 
         # FIX: Use the sidecar_nodes list count to check for a carousel (more stable)
         if hasattr(post, 'sidecar_nodes') and len(post.sidecar_nodes) > 1:
@@ -111,8 +82,9 @@ def get_media_details(instagram_url, preferred_type='Reels'):
         }, 200
         
     except instaloader.exceptions.InstaloaderException as e: 
+        # This will now catch the 401 error and show a simpler message
         print(f"Instaloader Error: {e}") 
-        return {"error": f"Post not found, or private, or network failed. Status: {e}"}, 404
+        return {"error": f"Post not found, or private, or network failed. Status: Connection Blocked."}, 404
     except Exception as e:
         print(f"Unexpected Error: {e}")
         return {"error": f"An unexpected server error occurred: {str(e)}"}, 500
