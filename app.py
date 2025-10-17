@@ -44,8 +44,8 @@ else:
     print("Instaloader Warning: No IG_USERNAME or IG_PASSWORD provided. Using anonymous access (HIGH RISK OF RATE LIMIT).")
 
 
-# --- Core Scraping Logic (ZIP Logic Removed) ---
-def get_media_details(instagram_url, preferred_type='Reels'): # ADDED preferred_type
+# --- Core Scraping Logic (Corrected) ---
+def get_media_details(instagram_url, preferred_type='Reels'): 
     """Fetches the direct media URL and filename from an Instagram Post URL."""
     # 1. Extract Post Shortcode 
     match = re.search(r'(?:/p/|/reel/|/tv/)([^/]+)', instagram_url)
@@ -56,40 +56,38 @@ def get_media_details(instagram_url, preferred_type='Reels'): # ADDED preferred_
     time.sleep(1.5) 
 
     try:
-        # 3. Get the Post object (uses the global, potentially authenticated L object)
+        # 3. Get the Post object
         post = instaloader.Post.from_shortcode(L.context, shortcode)
         
-        # --- LOGIC MODIFIED: Get ONLY the FIRST media item details based on preference ---
-        
         target_node = post
-        
-        # Scenario 1: Carousel/Sidecar Post (Need to pick an item)
-        if post.is_sidecar:
+        media_type = "Video (Reel/Post)" if post.is_video else "Image Post"
+
+        # FIX: Use post.is_album instead of post.is_sidecar 
+        if post.is_album:
             target_node = post.sidecar_nodes[0] # Default to first item
             media_type = f"Carousel (Item 1 of {len(post.sidecar_nodes)})"
 
-            # ADVANCED LOGIC: If 'Photo' is preferred, try to find the first image in the carousel
+            # ADVANCED LOGIC: If 'Photo' is preferred, try to find the first image
             if preferred_type == 'Photo':
+                # Use a generator to find the first image in the sidecar nodes
                 found_image = next((node for node in post.sidecar_nodes if not node.is_video), None)
                 if found_image:
                     target_node = found_image
                     media_type = f"Carousel (First Image)"
             
-            # ADVANCED LOGIC: If 'Video' is preferred, try to find the first video in the carousel
+            # ADVANCED LOGIC: If 'Video' or 'Reels' is preferred, try to find the first video
             elif preferred_type == 'Video' or preferred_type == 'Reels':
                 found_video = next((node for node in post.sidecar_nodes if node.is_video), None)
                 if found_video:
                     target_node = found_video
                     media_type = f"Carousel (First Video)"
         
-        # Scenario 2: Single Post
-        else:
-            media_type = "Video (Reel/Post)" if post.is_video else "Image Post"
-
+        # --- End Logic ---
         
         is_video = target_node.is_video
         file_ext = ".mp4" if is_video else ".jpg"
         
+        # Use the correct URL properties based on the target node
         download_url = target_node.video_url if is_video else target_node.display_url
         thumbnail_url = target_node.display_url
         
@@ -107,7 +105,7 @@ def get_media_details(instagram_url, preferred_type='Reels'): # ADDED preferred_
             "filename": filename_base,
             "type": media_type,
             "thumbnail_url": thumbnail_url,
-            "is_carousel": post.is_sidecar,
+            "is_carousel": post.is_album, # Return the correct property
             "media_list": media_list 
         }, 200
         
@@ -141,7 +139,7 @@ def download_api():
     """API endpoint to scrape the URL and return data for the frontend."""
     data = request.get_json()
     instagram_url = data.get('url')
-    # NEW: Safely get the preferred type from the frontend
+    # Safely get the preferred type from the frontend
     preferred_type = data.get('preferred_type', 'Reels') 
     
     if not instagram_url:
