@@ -97,7 +97,18 @@
             border-radius: 15px; padding: 20px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); color: white; max-width: 400px; margin: 30px auto;
         }
 
-        .result-header { font-size: 24px; font-weight: 500; text-align: center; margin-bottom: 20px; }
+        .result-header { 
+            font-size: 24px; 
+            font-weight: 500; 
+            text-align: center; 
+            margin-bottom: 5px; /* Reduced margin */
+        }
+        .result-subheader { /* NEW STYLE */
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }
         
         .media-preview {
             position: relative; width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
@@ -314,10 +325,10 @@
         const VPN_AFFILIATE_LINK = "YOUR_UNIQUE_VPN_AFFILIATE_LINK";
         
         // CRITICAL FUNCTION: Generates the URL that hits the local server proxy
-        function generateProxyDownloadLink(originalUrl, filename) {
+        function generateProxyDownloadLink(originalUrl, filename, mediaList) {
             const params = new URLSearchParams({
-                url: originalUrl,
-                filename: filename
+                filename: filename,
+                media_list: JSON.stringify(mediaList) // Pass the entire media list for ZIP support
             }).toString();
             
             return `/download_proxy?${params}`;
@@ -351,9 +362,20 @@
                     document.querySelectorAll('.options-bar .option-button').forEach(btn => btn.classList.remove('active'));
                     this.classList.add('active');
                     
-                    // 2. Update H1 Text (Functional)
+                    // 2. Update H1 and Subtitle Text (Functional)
                     const contentType = this.getAttribute('data-type');
                     mainHeading.textContent = `Instagram ${contentType} Downloader`;
+                    
+                    // NEW: Update subtitle based on content type
+                    const subtitle = document.querySelector('.subtitle');
+                    if (contentType === 'Reels' || contentType === 'Video') {
+                        subtitle.textContent = `Download Instagram ${contentType} videos easily!`;
+                    } else if (contentType === 'Photo') {
+                        subtitle.textContent = `Download Instagram photos and carousels easily!`;
+                    } else {
+                        subtitle.textContent = `Download Instagram content easily!`;
+                    }
+
 
                     // 3. Focus Input
                     urlInput.focus();
@@ -369,6 +391,11 @@
             const submitButton = document.getElementById('submitButton');
             const loadingIndicator = document.getElementById('loadingIndicator');
             const inputWrapper = document.getElementById('inputWrapper'); // New wrapper reference
+            
+            // Get selected preference from the active button (defaults to 'Reels')
+            const activeTypeButton = document.querySelector('.options-bar .option-button.active');
+            const preferredType = activeTypeButton ? activeTypeButton.getAttribute('data-type') : 'Reels';
+
 
             resultArea.innerHTML = '';
             
@@ -380,10 +407,11 @@
             loadingIndicator.style.display = 'flex'; // Show loading overlay
 
             try {
+                // MODIFIED PAYLOAD: Pass the preferredType to the API
                 const response = await fetch('/api/download', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url: url })
+                    body: JSON.stringify({ url: url, preferred_type: preferredType })
                 });
 
                 const data = await response.json();
@@ -391,7 +419,7 @@
                 if (response.ok) {
                     
                     // CRITICAL FIX FOR PREVIEW: Use the proxy link as the source for the video player.
-                    const proxyVideoSource = generateProxyDownloadLink(data.original_url, data.filename);
+                    const proxyVideoSource = generateProxyDownloadLink(data.original_url, data.filename, data.media_list);
                     
                     // Fallback for an image post, just in case the backend incorrectly flags it as a video.
                     const isVideo = data.type.includes('Video') || data.type.includes('Reel');
@@ -400,12 +428,17 @@
                         : `<img src="${data.thumbnail_url}" alt="Image Preview" class="video-element">`;
                     
                     // CRITICAL FIX: Generate the link for the new proxy route (used for the download button)
-                    const proxyDownloadLink = generateProxyDownloadLink(data.original_url, data.filename);
+                    const proxyDownloadLink = generateProxyDownloadLink(data.original_url, data.filename, data.media_list);
+
+                    // Adjust download text if it's a carousel (since ZIP is removed, it still downloads the first item)
+                    const downloadText = data.is_carousel ? `Download First Item` : `Download`;
+
 
                     // Generate the result using the <video> tag
                     resultArea.innerHTML = `
                         <div class="result-card">
                             <div class="result-header">Search result</div>
+                            <div class="result-subheader">${data.is_carousel ? 'Downloading the first matched item.' : data.type}</div>
                             <div class="media-preview">
                                 ${mediaElement}
                             </div>
@@ -414,7 +447,7 @@
                             <a href="${proxyDownloadLink}" 
                                 download="${data.filename}" 
                                 class="download-btn-large">
-                                Download
+                                ${downloadText}
                             </a>
                             <p style="font-size: 10px; color: #fff; margin-top: 10px; opacity: 0.8;">
                                 File served via local proxy for download compatibility.
