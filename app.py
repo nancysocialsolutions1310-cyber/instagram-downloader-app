@@ -92,8 +92,11 @@ def get_media_details(instagram_url, preferred_type='Reels'):
         is_video = target_node.is_video
         file_ext = ".mp4" if is_video else ".jpg"
         
-        download_url = target_node.video_url if is_video else target_node.display_url
-        thumbnail_url = target_node.display_url
+        # FIX 1: Use target_node.url instead of target_node.display_url
+        download_url = target_node.video_url if is_video else target_node.url
+        
+        # FIX 2: Use target_node.url instead of target_node.display_url for thumbnail
+        thumbnail_url = target_node.url
         
         # Create a simple list with only the selected item
         media_list = [{
