@@ -17,24 +17,29 @@ L = instaloader.Instaloader()
 IG_USERNAME = os.environ.get('IG_USERNAME')
 IG_PASSWORD = os.environ.get('IG_PASSWORD')
 
+# CRITICAL FIX: Define the expected session file path (in the same directory as app.py)
+SESSION_FILE_PATH = f"{IG_USERNAME}.session"
+
 # Attempt to log in or load session on startup
 if IG_USERNAME and IG_PASSWORD:
     try:
-        # 1. Try loading a previously saved session file (preferred)
-        L.load_session_from_file(IG_USERNAME)
-        print(f"Instaloader: Session loaded successfully for {IG_USERNAME}.")
+        # 1. Try loading a previously saved session file from the project root
+        L.load_session_from_file(IG_USERNAME, filename=SESSION_FILE_PATH)
+        print(f"Instaloader: Session loaded successfully from project root for {IG_USERNAME}.")
     except FileNotFoundError:
-        # 2. If no session file, attempt login using credentials
+        # 2. If no session file in project root, attempt login using credentials
         try:
+            print(f"Instaloader: Session file not found. Attempting fresh login for {IG_USERNAME}...")
             L.login(IG_USERNAME, IG_PASSWORD)
-            # Save the session for future restarts
-            L.save_session_to_file(IG_USERNAME)
-            print(f"Instaloader: Login successful for {IG_USERNAME} and session saved.")
+            
+            # Save the session to the PROJECT ROOT (where Render expects it)
+            L.save_session_to_file(IG_USERNAME, filename=SESSION_FILE_PATH)
+            print(f"Instaloader: Login successful and session saved to {SESSION_FILE_PATH}.")
         except Exception as e:
             # This handles two-factor authentication or login failures
             print(f"Instaloader Warning: Failed to log in with credentials. Error: {e}. Falling back to anonymous access.")
     except Exception as e:
-        print(f"Instaloader Warning: Error loading session file. Falling back to anonymous access. Error: {e}")
+        print(f"Instaloader Warning: General error during session loading. Falling back to anonymous access. Error: {e}")
 else:
     print("Instaloader Warning: No IG_USERNAME or IG_PASSWORD provided. Using anonymous access (HIGH RISK OF RATE LIMIT).")
 
