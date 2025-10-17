@@ -61,23 +61,25 @@ def get_media_details(instagram_url, preferred_type='Reels'):
         
         target_node = post
         media_type = "Video (Reel/Post)" if post.is_video else "Image Post"
+        is_carousel = False # Assume false initially
 
-        # FIX: Use post.is_album instead of post.is_sidecar 
-        if post.is_album:
-            target_node = post.sidecar_nodes[0] # Default to first item
-            media_type = f"Carousel (Item 1 of {len(post.sidecar_nodes)})"
+        # FIX: Use the sidecar_nodes list count to check for a carousel (more stable)
+        if hasattr(post, 'sidecar_nodes') and len(post.sidecar_nodes) > 1:
+            is_carousel = True
+            sidecar_nodes = post.sidecar_nodes
+            target_node = sidecar_nodes[0] # Default to first item
+            media_type = f"Carousel (Item 1 of {len(sidecar_nodes)})"
 
             # ADVANCED LOGIC: If 'Photo' is preferred, try to find the first image
             if preferred_type == 'Photo':
-                # Use a generator to find the first image in the sidecar nodes
-                found_image = next((node for node in post.sidecar_nodes if not node.is_video), None)
+                found_image = next((node for node in sidecar_nodes if not node.is_video), None)
                 if found_image:
                     target_node = found_image
                     media_type = f"Carousel (First Image)"
             
             # ADVANCED LOGIC: If 'Video' or 'Reels' is preferred, try to find the first video
             elif preferred_type == 'Video' or preferred_type == 'Reels':
-                found_video = next((node for node in post.sidecar_nodes if node.is_video), None)
+                found_video = next((node for node in sidecar_nodes if node.is_video), None)
                 if found_video:
                     target_node = found_video
                     media_type = f"Carousel (First Video)"
@@ -105,7 +107,7 @@ def get_media_details(instagram_url, preferred_type='Reels'):
             "filename": filename_base,
             "type": media_type,
             "thumbnail_url": thumbnail_url,
-            "is_carousel": post.is_album, # Return the correct property
+            "is_carousel": is_carousel, # Return the boolean result
             "media_list": media_list 
         }, 200
         
