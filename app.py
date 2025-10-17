@@ -22,24 +22,23 @@ SESSION_FILE_PATH = f"{IG_USERNAME}.session"
 
 # Attempt to log in or load session on startup
 if IG_USERNAME and IG_PASSWORD:
+    # --- SIMPLIFIED LOGIN SEQUENCE ---
     try:
-        # 1. Try loading a previously saved session file from the project root
+        # 1. First, try loading the session file directly (This is the stable check)
         L.load_session_from_file(IG_USERNAME, filename=SESSION_FILE_PATH)
         print(f"Instaloader: Session loaded successfully from project root for {IG_USERNAME}.")
-    except FileNotFoundError:
-        # 2. If no session file in project root, attempt login using credentials
+    except Exception as load_error:
+        # 2. If loading fails (due to missing file, expired token, or any error), attempt a fresh login
+        print(f"Instaloader: Session load failed ({load_error}). Attempting fresh login...")
         try:
-            print(f"Instaloader: Session file not found. Attempting fresh login for {IG_USERNAME}...")
             L.login(IG_USERNAME, IG_PASSWORD)
             
             # Save the session to the PROJECT ROOT (where Render expects it)
             L.save_session_to_file(IG_USERNAME, filename=SESSION_FILE_PATH)
             print(f"Instaloader: Login successful and session saved to {SESSION_FILE_PATH}.")
-        except Exception as e:
-            # This handles two-factor authentication or login failures
-            print(f"Instaloader Warning: Failed to log in with credentials. Error: {e}. Falling back to anonymous access.")
-    except Exception as e:
-        print(f"Instaloader Warning: General error during session loading. Falling back to anonymous access. Error: {e}")
+        except Exception as login_error:
+            # This will catch the Checkpoint error and fall back to anonymous access
+            print(f"Instaloader Warning: Fresh login failed. Error: {login_error}. Falling back to anonymous access.")
 else:
     print("Instaloader Warning: No IG_USERNAME or IG_PASSWORD provided. Using anonymous access (HIGH RISK OF RATE LIMIT).")
 
