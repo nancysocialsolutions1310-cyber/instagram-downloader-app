@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iGram Reels Downloader Clone</title>
+    <!-- Font Awesome for iGram icon simulation -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        /* --- General Body and Background Styling --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            /* Multi-color Instagram-like gradient background */
+            background: linear-gradient(135deg, #e4405f 0%, #d53a92 33%, #833ab4 66%, #405DE6 100%);
+            color: #333;
+        }
+        
+        /* --- Header/Nav Bar (Simulated) --- */
+        .header {
+            width: 100%; background-color: #1e1e1e; padding: 10px 20px; display: flex; justify-content: flex-start; align-items: center; position: fixed; top: 0; left: 0; z-index: 10;
+        }
+        .logo { color: #fff; font-size: 24px; font-weight: bold; display: flex; align-items: center; }
+        .logo i { color: #E1306C; margin-right: 5px; }
+
+        /* --- Main Content Container --- */
+        .main-content {
+            padding: 60px 20px; width: 90%; max-width: 800px; text-align: center;
+        }
+
+        h1 { color: #ffffff; font-size: 40px; font-weight: 700; margin-bottom: 5px; }
+        .subtitle { color: #e0e0e0; font-size: 18px; margin-bottom: 30px; }
+
+        /* --- Input and Button Layout --- */
+        #downloadForm { 
+            display: flex; 
+            justify-content: center; 
+            gap: 10px; 
+            max-width: 600px; /* Constrain form width */
+            margin: 0 auto; /* Center the form wrapper */
+        }
+        
+        /* FIX: Ensure the input group acts as the main wrapper for centering */
+        .input-group {
+            display: flex; width: 100%; max-width: 600px; background-color: white; border-radius: 8px; padding: 6px; box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+            position: relative; 
+            min-height: 50px; /* Ensure space for the spinner */
+        }
+        
+        /* Container for alignment */
+        .input-elements-wrapper {
+            display: flex;
+            width: 100%;
+            transition: opacity 0.3s;
+        }
+        
+        #urlInput {
+            flex-grow: 1; 
+            padding: 10px 15px; 
+            border: none; 
+            outline: none; 
+            font-size: 16px; 
+            /* Remove right radius on input so it blends with clear button */
+            border-radius: 6px 0 0 6px; 
+        }
+
+        /* --- CLEAR BUTTON STYLES --- */
+        #clearButton {
+            background-color: transparent;
+            color: #555;
+            padding: 10px;
+            border: none;
+            border-radius: 0;
+            font-size: 14px;
+            cursor: pointer;
+            transition: color 0.15s;
+            line-height: 20px; /* Vertically center icon */
+        }
+        #clearButton:hover {
+            color: #222;
+        }
+        
+        #submitButton {
+            background-color: #405DE6; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.3s;
+        }
+        #submitButton:hover:not(:disabled) { background-color: #334dcc; }
+        #submitButton:disabled { background-color: #aaa; cursor: not-allowed; }
+
+        /* --- Search Result Card Styles --- */
+        .result-card {
+            background: linear-gradient(135deg, #c04866 0%, #a54080 33%, #6e338c 66%, #3d56b0 100%);
+            border-radius: 15px; padding: 20px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3); color: white; max-width: 400px; margin: 30px auto;
+        }
+
+        .result-header { font-size: 24px; font-weight: 500; text-align: center; margin-bottom: 20px; }
+        
+        .media-preview {
+            position: relative; width: 100%; border-radius: 10px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            padding-top: 150%;
+        }
+        .video-element {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 10px;
+        }
+        
+        .download-btn-large {
+            display: block; text-align: center; text-decoration: none;
+            width: 100%; padding: 15px 0; font-size: 20px; font-weight: bold; color: white; background-color: #405DE6;
+            border: 1px solid white; border-radius: 8px; cursor: pointer; transition: background-color 0.2s;
+        }
+        .download-btn-large:hover { background-color: #334dcc; }
+        
+        .message { padding: 10px; border-radius: 5px; margin-top: 20px; font-weight: bold; text-align: center; }
+        .success { background-color: #e6ffe6; color: #1e8449; }
+        .error { background-color: #ffe6e6; color: #cc0000; }
+
+        /* --- Loading Spinner FIX --- */
+        #loadingIndicator {
+            /* Full overlay for the input group */
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: none; /* Controlled by JS */
+            /* Center the spinner item */
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 8px;
+            z-index: 50;
+            /* FIX: Ensure the spinner appears centered over the input box height */
+            min-height: 50px; 
+        }
+        .loading-spinner {
+            border: 4px solid #f3f3f3; 
+            border-top: 4px solid #405DE6; 
+            border-radius: 50%; 
+            width: 28px; 
+            height: 28px; 
+            animation: spin 1s linear infinite; 
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        @media (max-width: 600px) {
+            .input-group { flex-direction: column; padding: 10px; gap: 10px; }
+            #submitButton { width: 100%; border-radius: 6px; }
+            #urlInput { border-radius: 6px; }
+            .input-elements-wrapper { flex-direction: column; gap: 10px; }
+        }
+        
+        /* --- VPN CTA STYLES FIX --- */
+        .vpn-cta {
+            background-color: rgba(255, 255, 255, 0.15); 
+            backdrop-filter: blur(5px); 
+            border-radius: 10px; 
+            margin: 40px auto; /* Centers horizontally and provides space */
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); 
+            max-width: 600px; 
+            padding: 20px;
+        }
+        .vpn-cta p { 
+            color: #ffffff; 
+            font-size: 16px; 
+            margin-bottom: 15px; 
+            font-weight: 500; 
+        }
+        .vpn-cta a.vpn-button { 
+            display: block; 
+            background-color: #2ecc71; /* Green button */
+            color: white; 
+            padding: 12px; 
+            text-decoration: none; 
+            border-radius: 6px; 
+            font-weight: bold; 
+            transition: background-color 0.3s; 
+            /* FIX: Ensure the button fills the container width */
+            width: 100%; 
+            box-sizing: border-box;
+        }
+        .vpn-cta a.vpn-button:hover { background-color: #27ae60; }
+
+        /* --- OPTIONS BAR STYLES --- */
+        .options-bar {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.2); /* Translucent background */
+            border-radius: 10px;
+            max-width: 600px;
+            margin: 0 auto 30px auto;
+        }
+
+        .option-button {
+            display: flex;
+            align-items: center;
+            padding: 8px 15px;
+            background-color: transparent; /* Default */
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s, border-color 0.2s;
+            text-decoration: none;
+        }
+
+        .option-button i {
+            margin-right: 5px;
+            font-size: 16px;
+        }
+
+        /* Active/Hover states */
+        .option-button:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+        .option-button.active {
+            background-color: white; /* Active button is opaque white */
+            color: #833ab4; /* Text color matching gradient */
+            border-color: white;
+            font-weight: bold;
+        }
+
+        /* --- NEW AD SLOT STYLES --- */
+        .ad-slot {
+            width: 100%;
+            max-width: 728px; /* Standard ad size */
+            height: 90px; /* Typical banner height */
+            background-color: rgba(0, 0, 0, 0.1);
+            color: rgba(255, 255, 255, 0.6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            margin: 20px auto;
+            border-radius: 8px;
+            border: 1px dashed rgba(255, 255, 255, 0.4);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">
+            <i class="fa-solid fa-camera-retro"></i> iGram
+        </div>
+    </div>
+
+    <div class="main-content">
+        
+        <!-- TOP AD SLOT: Blank Space Monetization -->
+        <div class="ad-slot">
+            [Ad Slot 1: Top Leaderboard Banner 728x90]
+        </div>
+        
+        <!-- START OPTIONS BAR -->
+        <div class="options-bar">
+            <a href="#" class="option-button" data-type="Video"><i class="fa-solid fa-video"></i> Video</a>
+            <a href="#" class="option-button" data-type="Photo"><i class="fa-solid fa-image"></i> Photo</a>
+            <a href="#" class="option-button active" data-type="Reels"><i class="fa-solid fa-fire"></i> Reels</a>
+            <a href="#" class="option-button" data-type="Story"><i class="fa-solid fa-book-open"></i> Story</a>
+        </div>
+        <!-- END OPTIONS BAR -->
+        
+        <h1 id="mainHeading">Instagram Reels Downloader</h1>
+        <p class="subtitle">Download Instagram Reels videos easily!</p>
+
+        <form id="downloadForm">
+            <div class="input-group">
+                <!-- Wrapper for input and button, will be hidden when loading -->
+                <div id="inputWrapper" class="input-elements-wrapper">
+                    <input type="text" id="urlInput" placeholder="Paste Instagram URL here..." required>
+                    
+                    <!-- NEW: Clear Button -->
+                    <button type="button" id="clearButton" title="Clear URL">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    
+                    <button type="submit" id="submitButton">Download</button>
+                </div>
+                
+                <!-- FIX: Loading Indicator is now positioned absolutely inside the input-group -->
+                <div id="loadingIndicator">
+                    <div class="loading-spinner"></div>
+                </div>
+            </div>
+        </form>
+        
+        <div id="resultArea"></div>
+        
+        <!-- VPN CALL TO ACTION - NOW CENTERED VIA MARGIN: AUTO -->
+        <div class="vpn-cta">
+            <p>🔒 **Protect your IP address and ensure download privacy.**</p>
+            <a href="YOUR_UNIQUE_VPN_AFFILIATE_LINK" target="_blank" class="vpn-button">
+                Get the #1 VPN for Streaming & Downloading
+            </a>
+        </div>
+        <!-- END VPN CALL TO ACTION -->
+        
+        <!-- BOTTOM AD SLOT: Blank Space Monetization -->
+        <div class="ad-slot">
+            [Ad Slot 2: Bottom Banner 300x250 or Leaderboard]
+        </div>
+    </div>
+
+    <script>
+        // CRITICAL: Define the affiliate link here (Replace this placeholder!)
+        const VPN_AFFILIATE_LINK = "YOUR_UNIQUE_VPN_AFFILIATE_LINK";
+        
+        // CRITICAL FUNCTION: Generates the URL that hits the local server proxy
+        function generateProxyDownloadLink(originalUrl, filename) {
+            const params = new URLSearchParams({
+                url: originalUrl,
+                filename: filename
+            }).toString();
+            
+            return `/download_proxy?${params}`;
+        }
+        
+        // Function to update the VPN link dynamically (useful for tracking/testing)
+        document.addEventListener('DOMContentLoaded', () => {
+            const vpnLink = document.querySelector('.vpn-button');
+            if (vpnLink) {
+                vpnLink.href = VPN_AFFILIATE_LINK;
+            }
+            
+            const urlInput = document.getElementById('urlInput');
+            const clearButton = document.getElementById('clearButton');
+
+            // --- CLEAR BUTTON LOGIC ---
+            clearButton.addEventListener('click', function() {
+                urlInput.value = '';
+                document.getElementById('resultArea').innerHTML = ''; // Clear results area
+                urlInput.focus();
+            });
+
+            // --- OPTIONS BAR LOGIC ---
+            const mainHeading = document.getElementById('mainHeading');
+            
+            document.querySelectorAll('.options-bar .option-button').forEach(button => {
+                button.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    
+                    // 1. Update Active State (Visual)
+                    document.querySelectorAll('.options-bar .option-button').forEach(btn => btn.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // 2. Update H1 Text (Functional)
+                    const contentType = this.getAttribute('data-type');
+                    mainHeading.textContent = `Instagram ${contentType} Downloader`;
+
+                    // 3. Focus Input
+                    urlInput.focus();
+                });
+            });
+        });
+
+        // Main form submission logic
+        document.getElementById('downloadForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const url = document.getElementById('urlInput').value.trim();
+            const resultArea = document.getElementById('resultArea');
+            const submitButton = document.getElementById('submitButton');
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const inputWrapper = document.getElementById('inputWrapper'); // New wrapper reference
+
+            resultArea.innerHTML = '';
+            
+            // FIX: Toggle visibility using display: flex/none and opacity
+            submitButton.disabled = true;
+            inputWrapper.style.opacity = '0';
+            inputWrapper.style.pointerEvents = 'none'; // Disable clicks during load
+            inputWrapper.style.display = 'none'; // Hide input wrapper
+            loadingIndicator.style.display = 'flex'; // Show loading overlay
+
+            try {
+                const response = await fetch('/api/download', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    
+                    // CRITICAL FIX FOR PREVIEW: Use the proxy link as the source for the video player.
+                    const proxyVideoSource = generateProxyDownloadLink(data.original_url, data.filename);
+                    
+                    // Fallback for an image post, just in case the backend incorrectly flags it as a video.
+                    const isVideo = data.type.includes('Video') || data.type.includes('Reel');
+                    const mediaElement = isVideo 
+                        ? `<video class="video-element" controls autoplay muted playsinline src="${proxyVideoSource}" poster="${data.thumbnail_url}"></video>`
+                        : `<img src="${data.thumbnail_url}" alt="Image Preview" class="video-element">`;
+                    
+                    // CRITICAL FIX: Generate the link for the new proxy route (used for the download button)
+                    const proxyDownloadLink = generateProxyDownloadLink(data.original_url, data.filename);
+
+                    // Generate the result using the <video> tag
+                    resultArea.innerHTML = `
+                        <div class="result-card">
+                            <div class="result-header">Search result</div>
+                            <div class="media-preview">
+                                ${mediaElement}
+                            </div>
+                            
+                            <!-- Download link points to the local server proxy -->
+                            <a href="${proxyDownloadLink}" 
+                                download="${data.filename}" 
+                                class="download-btn-large">
+                                Download
+                            </a>
+                            <p style="font-size: 10px; color: #fff; margin-top: 10px; opacity: 0.8;">
+                                File served via local proxy for download compatibility.
+                            </p>
+                        </div>
+                    `;
+
+                } else {
+                    // FAILURE: Display the error message
+                    resultArea.innerHTML = `<div class="message error">${data.error || 'An unknown error occurred.'}</div>`;
+                }
+            } catch (error) {
+                console.error('Fetch error:', error);
+                resultArea.innerHTML = `<div class="message error">Could not connect to the server API. Check your Flask console for startup errors.</div>`;
+            } finally {
+                // FIX: Restore visibility after loading
+                submitButton.disabled = false;
+                loadingIndicator.style.display = 'none';
+                inputWrapper.style.opacity = '1';
+                inputWrapper.style.pointerEvents = 'auto';
+                inputWrapper.style.display = 'flex'; // Restore original display
+                
+                // Extra check for mobile layout (since the original form was flex)
+                if (window.innerWidth <= 600) {
+                    inputWrapper.style.flexDirection = 'column';
+                }
+            }
+        });
+    </script>
+</body>
+</html>

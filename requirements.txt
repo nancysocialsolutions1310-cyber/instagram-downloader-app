@@ -1,0 +1,4 @@
+Flask
+instaloader
+requests
+gunicorn
