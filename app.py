@@ -7,15 +7,46 @@ import requests
 from io import BytesIO 
 import json
 from werkzeug.datastructures import Headers
+import random # For User-Agent randomization
 
 # --- Flask & Instaloader Setup ---
 app = Flask(__name__)
 L = instaloader.Instaloader()
 
-# --- ANONYMOUS MODE: Removing all login/session logic for stability ---
-print("Instaloader running in Anonymous Mode. Use caution against rate limits.")
+# --- PROXY CONFIGURATION SETUP ---
 
-# --- Core Scraping Logic (Corrected) ---
+# 1. Define User-Agent list for randomization
+USER_AGENT_LIST = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Safari/605.1.15',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:54.0) Gecko/20100101 Firefox/54.0',
+]
+
+# 2. Check environment variables for proxy credentials
+PROXY_USER = os.environ.get('PROXY_USER')
+PROXY_PASS = os.environ.get('PROXY_PASS')
+PROXY_HOST = os.environ.get('PROXY_HOST')
+PROXY_PORT = os.environ.get('PROXY_PORT')
+
+GLOBAL_PROXIES = None
+if PROXY_USER and PROXY_PASS and PROXY_HOST and PROXY_PORT:
+    proxy_url = f"http://{PROXY_USER}:{PROXY_PASS}@{PROXY_HOST}:{PROXY_PORT}"
+    GLOBAL_PROXIES = {
+        "http": proxy_url,
+        "https": proxy_url
+    }
+    print("Instaloader Proxy: Using authenticated proxy for external requests.")
+else:
+    print("Instaloader Proxy: Running without proxy. Stability may be limited.")
+
+
+# --- ANONYMOUS MODE/FALLBACK ---
+# We keep the code running in anonymous mode, but the proxy helps bypass blocks.
+
+
+# --- Core Scraping Logic ---
 def get_media_details(instagram_url, preferred_type='Reels'): 
     """Fetches the direct media URL and filename from an Instagram Post URL."""
     # 1. Extract Post Shortcode 
@@ -24,32 +55,32 @@ def get_media_details(instagram_url, preferred_type='Reels'):
         return {"error": "Invalid Instagram URL format."}, 400
         
     shortcode = match.group(1)
-    # Keeping time delay for basic politeness
     time.sleep(1.5) 
 
     try:
-        # 3. Get the Post object (runs anonymously)
+        # Pass proxy config to Instaloader context for scraping request
+        if GLOBAL_PROXIES:
+            L.context.external_proxy = GLOBAL_PROXIES.get('https')
+            
         post = instaloader.Post.from_shortcode(L.context, shortcode)
         
         target_node = post
         media_type = "Video (Reel/Post)" if post.is_video else "Image Post"
-        is_carousel = False # Assume false initially
+        is_carousel = False 
 
-        # FIX: Use the sidecar_nodes list count to check for a carousel (more stable)
         if hasattr(post, 'sidecar_nodes') and len(post.sidecar_nodes) > 1:
             is_carousel = True
             sidecar_nodes = post.sidecar_nodes
-            target_node = sidecar_nodes[0] # Default to first item
+            target_node = sidecar_nodes[0] 
             media_type = f"Carousel (Item 1 of {len(sidecar_nodes)})"
 
-            # ADVANCED LOGIC: If 'Photo' is preferred, try to find the first image
+            # ADVANCED LOGIC: Apply preference filter
             if preferred_type == 'Photo':
                 found_image = next((node for node in sidecar_nodes if not node.is_video), None)
                 if found_image:
                     target_node = found_image
                     media_type = f"Carousel (First Image)"
             
-            # ADVANCED LOGIC: If 'Video' or 'Reels' is preferred, try to find the first video
             elif preferred_type == 'Video' or preferred_type == 'Reels':
                 found_video = next((node for node in sidecar_nodes if node.is_video), None)
                 if found_video:
@@ -61,7 +92,6 @@ def get_media_details(instagram_url, preferred_type='Reels'):
         is_video = target_node.is_video
         file_ext = ".mp4" if is_video else ".jpg"
         
-        # Use the correct URL properties based on the target node
         download_url = target_node.video_url if is_video else target_node.display_url
         thumbnail_url = target_node.display_url
         
@@ -79,12 +109,11 @@ def get_media_details(instagram_url, preferred_type='Reels'):
             "filename": filename_base,
             "type": media_type,
             "thumbnail_url": thumbnail_url,
-            "is_carousel": is_carousel, # Return the boolean result
+            "is_carousel": is_carousel,
             "media_list": media_list 
         }, 200
         
     except instaloader.exceptions.InstaloaderException as e: 
-        # This will still catch network or missing post errors
         print(f"Instaloader Error: {e}") 
         return {"error": f"Post not found, or private, or network failed. Status: Connection Blocked."}, 404
     except Exception as e:
@@ -96,13 +125,13 @@ def get_media_details(instagram_url, preferred_type='Reels'):
 def stream_file_from_url(url):
     """Streams a single file content from an external URL."""
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': random.choice(USER_AGENT_LIST) # Use random User-Agent for streaming request
     }
-    # Use stream=True for large files
-    response = requests.get(url, headers=headers, stream=True)
+    
+    # Use global proxies for external request, if defined
+    response = requests.get(url, headers=headers, stream=True, proxies=GLOBAL_PROXIES)
     response.raise_for_status()
     
-    # Generator yields chunks of file data
     for chunk in response.iter_content(chunk_size=8192):
         yield chunk
 
@@ -114,13 +143,11 @@ def download_api():
     """API endpoint to scrape the URL and return data for the frontend."""
     data = request.get_json()
     instagram_url = data.get('url')
-    # Safely get the preferred type from the frontend
     preferred_type = data.get('preferred_type', 'Reels') 
     
     if not instagram_url:
         return jsonify({"error": "Missing 'url' in request body."}), 400
 
-    # Pass the preference to the scraping logic
     result, status_code = get_media_details(instagram_url, preferred_type) 
     return jsonify(result), status_code
 
@@ -139,25 +166,22 @@ def download_proxy():
     except json.JSONDecodeError:
         return "Invalid media list format.", 400
     
-    # Since we removed ZIP logic, we only stream the first item
     if not media_list:
         return "No media found to stream.", 404
 
-    # --- SINGLE FILE STREAMING ---
     item = media_list[0]
     url = item['url']
     
     try:
         mimetype = 'video/mp4' if item['is_video'] else 'image/jpeg'
         
-        # Use stream_with_context to send file efficiently
         return Response(stream_with_context(stream_file_from_url(url)),
                         headers={'Content-Disposition': f'attachment; filename="{filename}"',
                                  'Content-Type': mimetype})
         
     except requests.exceptions.RequestException as e:
         print(f"Single file proxy download failed: {e}")
-        return "Failed to retrieve single file from source.", 503
+        return "Failed to retrieve single file from source. Try using a proxy.", 503
 
 
 @app.route('/', methods=['GET'])
